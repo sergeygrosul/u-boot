@@ -1,14 +1,14 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * From coreboot src/soc/intel/broadwell/igd.c
  *
  * Copyright (C) 2016 Google, Inc
- *
- * SPDX-License-Identifier:	GPL-2.0
  */
 
 #include <common.h>
 #include <bios_emul.h>
 #include <dm.h>
+#include <init.h>
 #include <vbe.h>
 #include <video.h>
 #include <asm/cpu.h>
@@ -705,7 +705,7 @@ static int broadwell_igd_ofdata_to_platdata(struct udevice *dev)
 {
 	struct broadwell_igd_plat *plat = dev_get_platdata(dev);
 	struct broadwell_igd_priv *priv = dev_get_priv(dev);
-	int node = dev->of_offset;
+	int node = dev_of_offset(dev);
 	const void *blob = gd->fdt_blob;
 
 	if (fdtdec_get_int_array(blob, node, "intel,dp-hotplug",

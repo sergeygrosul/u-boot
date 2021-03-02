@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0+
 /* Copyright (C) 2011
  * Corscience GmbH & Co. KG - Simon Schwarz <schwarz@corscience.de>
  *  - Added prep subcommand support
@@ -8,16 +9,19 @@
  * Marius Groeger <mgroeger@sysgo.de>
  *
  * Copyright (C) 2001  Erik Mouw (J.A.K.Mouw@its.tudelft.nl)
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #include <common.h>
 #include <command.h>
+#include <cpu_func.h>
+#include <dm.h>
+#include <hang.h>
+#include <dm/root.h>
+#include <env.h>
 #include <image.h>
 #include <u-boot/zlib.h>
 #include <asm/byteorder.h>
-#include <libfdt.h>
+#include <linux/libfdt.h>
 #include <mapmem.h>
 #include <fdt_support.h>
 #include <asm/bootm.h>
@@ -29,6 +33,7 @@
 #ifdef CONFIG_ARMV7_NONSEC
 #include <asm/armv7.h>
 #endif
+#include <asm/setup.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -44,7 +49,8 @@ static ulong get_sp(void)
 
 void arch_lmb_reserve(struct lmb *lmb)
 {
-	ulong sp;
+	ulong sp, bank_end;
+	int bank;
 
 	/*
 	 * Booting a (Linux) kernel image
@@ -60,8 +66,18 @@ void arch_lmb_reserve(struct lmb *lmb)
 
 	/* adjust sp by 4K to be safe */
 	sp -= 4096;
-	lmb_reserve(lmb, sp,
-		    gd->bd->bi_dram[0].start + gd->bd->bi_dram[0].size - sp);
+	for (bank = 0; bank < CONFIG_NR_DRAM_BANKS; bank++) {
+		if (!gd->bd->bi_dram[bank].size ||
+		    sp < gd->bd->bi_dram[bank].start)
+			continue;
+		/* Watch out for RAM at end of address space! */
+		bank_end = gd->bd->bi_dram[bank].start +
+			gd->bd->bi_dram[bank].size - 1;
+		if (sp > bank_end)
+			continue;
+		lmb_reserve(lmb, sp, bank_end - sp + 1);
+		break;
+	}
 }
 
 __weak void board_quiesce_devices(void)
@@ -75,8 +91,6 @@ __weak void board_quiesce_devices(void)
  */
 static void announce_and_cleanup(int fake)
 {
-	printf("\nStarting kernel ...%s\n\n", fake ?
-		"(fake run for tracing)" : "");
 	bootstage_mark_name(BOOTSTAGE_ID_BOOTM_HANDOFF, "start_kernel");
 #ifdef CONFIG_BOOTSTAGE_FDT
 	bootstage_fdt_add_report();
@@ -90,6 +104,15 @@ static void announce_and_cleanup(int fake)
 #endif
 
 	board_quiesce_devices();
+
+	printf("\nStarting kernel ...%s\n\n", fake ?
+		"(fake run for tracing)" : "");
+	/*
+	 * Call remove function of all devices with a removal flag set.
+	 * This may be useful for last-stage operations, like cancelling
+	 * of DMA operation or releasing device internal buffers.
+	 */
+	dm_remove_devices_flags(DM_REMOVE_ACTIVE_ALL);
 
 	cleanup_before_linux();
 }
@@ -203,10 +226,12 @@ static void do_nonsec_virt_switch(void)
 }
 #endif
 
+__weak void board_prep_linux(bootm_headers_t *images) { }
+
 /* Subcommand: PREP */
 static void boot_prep_linux(bootm_headers_t *images)
 {
-	char *commandline = getenv("bootargs");
+	char *commandline = env_get("bootargs");
 
 	if (IMAGE_ENABLE_OF_LIBFDT && images->ft_len) {
 #ifdef CONFIG_OF_LIBFDT
@@ -249,6 +274,8 @@ static void boot_prep_linux(bootm_headers_t *images)
 		printf("FDT and ATAGS support not compiled in - hanging\n");
 		hang();
 	}
+
+	board_prep_linux(images);
 }
 
 __weak bool armv7_boot_nonsec_default(void)
@@ -263,7 +290,7 @@ __weak bool armv7_boot_nonsec_default(void)
 #ifdef CONFIG_ARMV7_NONSEC
 bool armv7_boot_nonsec(void)
 {
-	char *s = getenv("bootm_boot_mode");
+	char *s = env_get("bootm_boot_mode");
 	bool nonsec = armv7_boot_nonsec_default();
 
 	if (s && !strcmp(s, "sec"))
@@ -287,11 +314,11 @@ static void switch_to_el1(void)
 	if ((IH_ARCH_DEFAULT == IH_ARCH_ARM64) &&
 	    (images.os.arch == IH_ARCH_ARM))
 		armv8_switch_to_el1(0, (u64)gd->bd->bi_arch_number,
-				    (u64)images.ft_addr,
+				    (u64)images.ft_addr, 0,
 				    (u64)images.ep,
 				    ES_TO_AARCH32);
 	else
-		armv8_switch_to_el1((u64)images.ft_addr, 0, 0,
+		armv8_switch_to_el1((u64)images.ft_addr, 0, 0, 0,
 				    images.ep,
 				    ES_TO_AARCH64);
 }
@@ -324,17 +351,17 @@ static void boot_jump_linux(bootm_headers_t *images, int flag)
 		update_os_arch_secondary_cores(images->os.arch);
 
 #ifdef CONFIG_ARMV8_SWITCH_TO_EL1
-		armv8_switch_to_el2((u64)images->ft_addr, 0, 0,
+		armv8_switch_to_el2((u64)images->ft_addr, 0, 0, 0,
 				    (u64)switch_to_el1, ES_TO_AARCH64);
 #else
 		if ((IH_ARCH_DEFAULT == IH_ARCH_ARM64) &&
 		    (images->os.arch == IH_ARCH_ARM))
 			armv8_switch_to_el2(0, (u64)gd->bd->bi_arch_number,
-					    (u64)images->ft_addr,
+					    (u64)images->ft_addr, 0,
 					    (u64)images->ep,
 					    ES_TO_AARCH32);
 		else
-			armv8_switch_to_el2((u64)images->ft_addr, 0, 0,
+			armv8_switch_to_el2((u64)images->ft_addr, 0, 0, 0,
 					    images->ep,
 					    ES_TO_AARCH64);
 #endif
@@ -347,8 +374,11 @@ static void boot_jump_linux(bootm_headers_t *images, int flag)
 	int fake = (flag & BOOTM_STATE_OS_FAKE_GO);
 
 	kernel_entry = (void (*)(int, int, uint))images->ep;
-
-	s = getenv("machid");
+#ifdef CONFIG_CPU_V7M
+	ulong addr = (ulong)kernel_entry | 1;
+	kernel_entry = (void *)addr;
+#endif
+	s = env_get("machid");
 	if (s) {
 		if (strict_strtoul(s, 16, &machid) < 0) {
 			debug("strict_strtoul failed!\n");
@@ -416,7 +446,7 @@ void boot_prep_vxworks(bootm_headers_t *images)
 
 	if (images->ft_addr) {
 		off = fdt_path_offset(images->ft_addr, "/memory");
-		if (off < 0) {
+		if (off > 0) {
 			if (arch_fixup_fdt(images->ft_addr))
 				puts("## WARNING: fixup memory failed!\n");
 		}
@@ -426,6 +456,11 @@ void boot_prep_vxworks(bootm_headers_t *images)
 }
 void boot_jump_vxworks(bootm_headers_t *images)
 {
+#if defined(CONFIG_ARM64) && defined(CONFIG_ARMV8_PSCI)
+	armv8_setup_psci();
+	smp_kick_all_cpus();
+#endif
+
 	/* ARM VxWorks requires device tree physical address to be passed */
 	((void (*)(void *))images->ep)(images->ft_addr);
 }

@@ -8,6 +8,7 @@
  */
 
 #include <common.h>
+#include <malloc.h>
 #include <linux/errno.h>
 #include <asm/gpio.h>
 
@@ -138,7 +139,7 @@ int peripheral_request(unsigned short per, const char *label)
 		return 0;
 
 	if (!(per & P_DEFINED))
-		return -ENODEV;
+		return -EINVAL;
 
 	BUG_ON(ident >= MAX_RESOURCES);
 

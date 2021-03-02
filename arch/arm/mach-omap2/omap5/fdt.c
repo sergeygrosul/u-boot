@@ -1,11 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright 2016 Texas Instruments, Inc.
- *
- * SPDX-License-Identifier: GPL-2.0+
  */
 
 #include <common.h>
-#include <libfdt.h>
+#include <hang.h>
+#include <linux/libfdt.h>
 #include <fdt_support.h>
 #include <malloc.h>
 
@@ -90,29 +90,6 @@ static int ft_hs_fixup_crossbar(void *fdt, bd_t *bd)
 	return 0;
 }
 
-static int ft_hs_disable_rng(void *fdt, bd_t *bd)
-{
-	const char *path;
-	int offs;
-	int ret;
-
-	/* Make HW RNG reserved for secure world use */
-	path = "/ocp/rng";
-	offs = fdt_path_offset(fdt, path);
-	if (offs < 0) {
-		debug("Node %s not found.\n", path);
-		return 0;
-	}
-	ret = fdt_setprop_string(fdt, offs,
-				 "status", "disabled");
-	if (ret < 0) {
-		printf("Could not add status property to node %s: %s\n",
-		       path, fdt_strerror(ret));
-		return ret;
-	}
-	return 0;
-}
-
 #if ((TI_OMAP5_SECURE_BOOT_RESV_SRAM_SZ != 0) || \
     (CONFIG_SECURE_RUNTIME_RESV_SRAM_SZ != 0))
 static int ft_hs_fixup_sram(void *fdt, bd_t *bd)
@@ -152,97 +129,6 @@ static int ft_hs_fixup_sram(void *fdt, bd_t *bd)
 #else
 static int ft_hs_fixup_sram(void *fdt, bd_t *bd) { return 0; }
 #endif
-
-#if (CONFIG_TI_SECURE_EMIF_TOTAL_REGION_SIZE != 0)
-static int ft_hs_fixup_dram(void *fdt, bd_t *bd)
-{
-	const char *path, *subpath;
-	int offs;
-	u32 sec_mem_start = CONFIG_TI_SECURE_EMIF_REGION_START;
-	u32 sec_mem_size = CONFIG_TI_SECURE_EMIF_TOTAL_REGION_SIZE;
-	fdt64_t temp[2];
-
-	/* If start address is zero, place at end of DRAM */
-	if (0 == sec_mem_start)
-		sec_mem_start =
-			(CONFIG_SYS_SDRAM_BASE +
-			(omap_sdram_size() - sec_mem_size));
-
-	/* Delete any original secure_reserved node */
-	path = "/reserved-memory/secure_reserved";
-	offs = fdt_path_offset(fdt, path);
-	if (offs >= 0)
-		fdt_del_node(fdt, offs);
-
-	/* Add new secure_reserved node */
-	path = "/reserved-memory";
-	offs = fdt_path_offset(fdt, path);
-	if (offs < 0) {
-		debug("Node %s not found\n", path);
-		path = "/";
-		subpath = "reserved-memory";
-		fdt_path_offset(fdt, path);
-		offs = fdt_add_subnode(fdt, offs, subpath);
-		if (offs < 0) {
-			printf("Could not create %s%s node.\n", path, subpath);
-			return 1;
-		}
-		path = "/reserved-memory";
-		offs = fdt_path_offset(fdt, path);
-	}
-
-	subpath = "secure_reserved";
-	offs = fdt_add_subnode(fdt, offs, subpath);
-	if (offs < 0) {
-		printf("Could not create %s%s node.\n", path, subpath);
-		return 1;
-	}
-
-	temp[0] = cpu_to_fdt64(((u64)sec_mem_start));
-	temp[1] = cpu_to_fdt64(((u64)sec_mem_size));
-	fdt_setprop_string(fdt, offs, "compatible",
-			   "ti,dra7-secure-memory");
-	fdt_setprop_string(fdt, offs, "status", "okay");
-	fdt_setprop(fdt, offs, "no-map", NULL, 0);
-	fdt_setprop(fdt, offs, "reg", temp, sizeof(temp));
-
-	return 0;
-}
-#else
-static int ft_hs_fixup_dram(void *fdt, bd_t *bd) { return 0; }
-#endif
-
-static int ft_hs_add_tee(void *fdt, bd_t *bd)
-{
-	const char *path, *subpath;
-	int offs;
-
-	extern int tee_loaded;
-	if (!tee_loaded)
-		return 0;
-
-	path = "/";
-	offs = fdt_path_offset(fdt, path);
-
-	subpath = "firmware";
-	offs = fdt_add_subnode(fdt, offs, subpath);
-	if (offs < 0) {
-		printf("Could not create %s node.\n", subpath);
-		return 1;
-	}
-
-	subpath = "optee";
-	offs = fdt_add_subnode(fdt, offs, subpath);
-	if (offs < 0) {
-		printf("Could not create %s node.\n", subpath);
-		return 1;
-	}
-
-	fdt_setprop_string(fdt, offs, "compatible", "linaro,optee-tz");
-	fdt_setprop_string(fdt, offs, "method", "smc");
-
-	return 0;
-}
 
 static void ft_hs_fixups(void *fdt, bd_t *bd)
 {
@@ -295,6 +181,14 @@ u32 dra7_opp_dsp_clk_rates[NUM_OPPS][OPP_DSP_CLK_NUM] = {
 	{750000000, 750000000, 500000000}, /* OPP_HIGH */
 };
 
+/* DSP clock rates on DRA76x ACD-package based SoCs */
+u32 dra76_opp_dsp_clk_rates[NUM_OPPS][OPP_DSP_CLK_NUM] = {
+	{}, /* OPP_LOW */
+	{600000000, 600000000, 400000000}, /* OPP_NOM */
+	{700000000, 700000000, 466666667}, /* OPP_OD */
+	{850000000, 850000000, 566666667}, /* OPP_HIGH */
+};
+
 /* IVA voltage domain */
 u32 dra7_opp_iva_clk_rates[NUM_OPPS][OPP_IVA_CLK_NUM] = {
 	{}, /* OPP_LOW */
@@ -316,7 +210,9 @@ static int ft_fixup_clocks(void *fdt, const char **names, u32 *rates, int num)
 	int offs, node_offs, ret, i;
 	uint32_t phandle;
 
-	offs = fdt_path_offset(fdt, "/ocp/l4@4a000000/cm_core_aon@5000/clocks");
+	offs = fdt_path_offset(fdt, "/ocp/interconnect@4a000000/segment@0/target-module@5000/cm_core_aon@0/clocks");
+	if (offs < 0)
+		offs = fdt_path_offset(fdt, "/ocp/l4@4a000000/cm_core_aon@5000/clocks");
 	if (offs < 0) {
 		debug("Could not find cm_core_aon clocks node path offset : %s\n",
 		      fdt_strerror(offs));
@@ -370,6 +266,10 @@ static void ft_opp_clock_fixups(void *fdt, bd_t *bd)
 	/* fixup DSP clocks */
 	clk_names = dra7_opp_dsp_clk_names;
 	clk_rates = dra7_opp_dsp_clk_rates[get_voltrail_opp(VOLT_EVE)];
+	/* adjust for higher OPP_HIGH clock rate on DRA76xP/DRA77xP SoCs */
+	if (is_dra76x_acd())
+		clk_rates = dra76_opp_dsp_clk_rates[get_voltrail_opp(VOLT_EVE)];
+
 	ret = ft_fixup_clocks(fdt, clk_names, clk_rates, OPP_DSP_CLK_NUM);
 	if (ret) {
 		printf("ft_fixup_clocks failed for DSP voltage domain: %s\n",

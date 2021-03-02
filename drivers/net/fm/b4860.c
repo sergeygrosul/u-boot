@@ -1,10 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright 2012 Freescale Semiconductor, Inc.
  *	Roy Zang <tie-fei.zang@freescale.com>
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 #include <common.h>
+#include <env.h>
 #include <phy.h>
 #include <fm_eth.h>
 #include <asm/io.h>
@@ -97,7 +97,7 @@ phy_interface_t fman_port_enet_if(enum fm_port port)
 			 * Extract hwconfig from environment since environment
 			 * is not setup yet
 			 */
-			getenv_f("hwconfig", buffer, sizeof(buffer));
+			env_get_f("hwconfig", buffer, sizeof(buffer));
 			buf = buffer;
 
 			/* check if XFI interface enable in hwconfig for 10g */

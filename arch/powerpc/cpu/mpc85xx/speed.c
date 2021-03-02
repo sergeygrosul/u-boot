@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright 2004, 2007-2011 Freescale Semiconductor, Inc.
  *
@@ -6,11 +7,10 @@
  *
  * (C) Copyright 2000
  * Wolfgang Denk, DENX Software Engineering, wd@denx.de.
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #include <common.h>
+#include <cpu_func.h>
 #include <ppc_asm.tmpl>
 #include <linux/compiler.h>
 #include <asm/processor.h>
@@ -27,10 +27,6 @@ DECLARE_GLOBAL_DATA_PTR;
 void get_sys_info(sys_info_t *sys_info)
 {
 	volatile ccsr_gur_t *gur = (void *)(CONFIG_SYS_MPC85xx_GUTS_ADDR);
-#ifdef CONFIG_FSL_IFC
-	struct fsl_ifc ifc_regs = {(void *)CONFIG_SYS_IFC_ADDR, (void *)NULL};
-	u32 ccr;
-#endif
 #ifdef CONFIG_FSL_CORENET
 	volatile ccsr_clk_t *clk = (void *)(CONFIG_SYS_FSL_CORENET_CLK_ADDR);
 	unsigned int cpu;
@@ -73,8 +69,7 @@ void get_sys_info(sys_info_t *sys_info)
 		[14] = 4,	/* CC4 PPL / 4 */
 	};
 	uint i, freq_c_pll[CONFIG_SYS_FSL_NUM_CC_PLLS];
-#if !defined(CONFIG_FM_PLAT_CLK_DIV) || !defined(CONFIG_PME_PLAT_CLK_DIV) || \
-	defined(CONFIG_FSL_ESDHC_USE_PERIPHERAL_CLK)
+#if !defined(CONFIG_FM_PLAT_CLK_DIV) || !defined(CONFIG_PME_PLAT_CLK_DIV)
 	uint rcw_tmp;
 #endif
 	uint ratio[CONFIG_SYS_FSL_NUM_CC_PLLS];
@@ -454,48 +449,6 @@ void get_sys_info(sys_info_t *sys_info)
 #endif
 #endif
 
-#ifdef CONFIG_FSL_ESDHC_USE_PERIPHERAL_CLK
-#if defined(CONFIG_ARCH_T2080)
-#define ESDHC_CLK_SEL	0x00000007
-#define ESDHC_CLK_SHIFT	0
-#define ESDHC_CLK_RCWSR	15
-#else	/* Support T1040 T1024 by now */
-#define ESDHC_CLK_SEL	0xe0000000
-#define ESDHC_CLK_SHIFT	29
-#define ESDHC_CLK_RCWSR	7
-#endif
-	rcw_tmp = in_be32(&gur->rcwsr[ESDHC_CLK_RCWSR]);
-	switch ((rcw_tmp & ESDHC_CLK_SEL) >> ESDHC_CLK_SHIFT) {
-	case 1:
-		sys_info->freq_sdhc = freq_c_pll[CONFIG_SYS_SDHC_CLK];
-		break;
-	case 2:
-		sys_info->freq_sdhc = freq_c_pll[CONFIG_SYS_SDHC_CLK] / 2;
-		break;
-	case 3:
-		sys_info->freq_sdhc = freq_c_pll[CONFIG_SYS_SDHC_CLK] / 3;
-		break;
-#if defined(CONFIG_SYS_SDHC_CLK_2_PLL)
-	case 4:
-		sys_info->freq_sdhc = freq_c_pll[CONFIG_SYS_SDHC_CLK] / 4;
-		break;
-#if defined(CONFIG_ARCH_T2080)
-	case 5:
-		sys_info->freq_sdhc = freq_c_pll[1 - CONFIG_SYS_SDHC_CLK];
-		break;
-#endif
-	case 6:
-		sys_info->freq_sdhc = freq_c_pll[1 - CONFIG_SYS_SDHC_CLK] / 2;
-		break;
-	case 7:
-		sys_info->freq_sdhc = freq_c_pll[1 - CONFIG_SYS_SDHC_CLK] / 3;
-		break;
-#endif
-	default:
-		sys_info->freq_sdhc = 0;
-		printf("Error: Unknown SDHC peripheral clock select!\n");
-	}
-#endif
 #else /* CONFIG_SYS_FSL_QORIQ_CHASSIS2 */
 
 	for_each_cpu(i, cpu, cpu_numcores(), cpu_mask()) {
@@ -611,44 +564,17 @@ void get_sys_info(sys_info_t *sys_info)
 #endif /* CONFIG_FSL_CORENET */
 
 #if defined(CONFIG_FSL_LBC)
-	uint lcrr_div;
-#if defined(CONFIG_SYS_LBC_LCRR)
-	/* We will program LCRR to this value later */
-	lcrr_div = CONFIG_SYS_LBC_LCRR & LCRR_CLKDIV;
-#else
-	lcrr_div = in_be32(&(LBC_BASE_ADDR)->lcrr) & LCRR_CLKDIV;
-#endif
-	if (lcrr_div == 2 || lcrr_div == 4 || lcrr_div == 8) {
-#if defined(CONFIG_FSL_CORENET)
-		/* If this is corenet based SoC, bit-representation
-		 * for four times the clock divider values.
-		 */
-		lcrr_div *= 4;
-#elif !defined(CONFIG_ARCH_MPC8540) && !defined(CONFIG_ARCH_MPC8541) && \
-	!defined(CONFIG_ARCH_MPC8555) && !defined(CONFIG_ARCH_MPC8560)
-		/*
-		 * Yes, the entire PQ38 family use the same
-		 * bit-representation for twice the clock divider values.
-		 */
-		lcrr_div *= 2;
-#endif
-		sys_info->freq_localbus = sys_info->freq_systembus / lcrr_div;
-	} else {
-		/* In case anyone cares what the unknown value is */
-		sys_info->freq_localbus = lcrr_div;
-	}
+	sys_info->freq_localbus = sys_info->freq_systembus /
+						CONFIG_SYS_FSL_LBC_CLK_DIV;
 #endif
 
 #if defined(CONFIG_FSL_IFC)
-	ccr = ifc_in32(&ifc_regs.gregs->ifc_ccr);
-	ccr = ((ccr & IFC_CCR_CLK_DIV_MASK) >> IFC_CCR_CLK_DIV_SHIFT) + 1;
-
-	sys_info->freq_localbus = sys_info->freq_systembus / ccr;
+	sys_info->freq_localbus = sys_info->freq_systembus /
+						CONFIG_SYS_FSL_IFC_CLK_DIV;
 #endif
 }
 
-
-int get_clocks (void)
+int get_clocks(void)
 {
 	sys_info_t sys_info;
 #ifdef CONFIG_ARCH_MPC8544
@@ -703,14 +629,10 @@ int get_clocks (void)
 	gd->arch.i2c2_clk = gd->arch.i2c1_clk;
 
 #if defined(CONFIG_FSL_ESDHC)
-#ifdef CONFIG_FSL_ESDHC_USE_PERIPHERAL_CLK
-	gd->arch.sdhc_clk = sys_info.freq_sdhc / 2;
-#else
 #if defined(CONFIG_ARCH_MPC8569) || defined(CONFIG_ARCH_P1010)
 	gd->arch.sdhc_clk = gd->bus_clk;
 #else
 	gd->arch.sdhc_clk = gd->bus_clk / 2;
-#endif
 #endif
 #endif /* defined(CONFIG_FSL_ESDHC) */
 
@@ -730,7 +652,7 @@ int get_clocks (void)
  * get_bus_freq
  * return system bus freq in Hz
  *********************************************/
-ulong get_bus_freq (ulong dummy)
+ulong get_bus_freq(ulong dummy)
 {
 	return gd->bus_clk;
 }

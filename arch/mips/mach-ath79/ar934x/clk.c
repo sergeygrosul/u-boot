@@ -1,10 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (C) 2016 Marek Vasut <marex@denx.de>
- *
- * SPDX-License-Identifier: GPL-2.0+
  */
 
 #include <common.h>
+#include <clock_legacy.h>
+#include <hang.h>
 #include <asm/io.h>
 #include <asm/addrspace.h>
 #include <asm/types.h>
@@ -90,7 +91,7 @@ static void ar934x_srif_pll_cfg(void __iomem *pll_reg_base, const u32 srif_val)
 		setbits_be32(pll_reg_base + 0x8, BIT(30));
 		udelay(5);
 
-		wait_for_bit("clk", pll_reg_base + 0xc, BIT(3), 1, 10, 0);
+		wait_for_bit_le32(pll_reg_base + 0xc, BIT(3), 1, 10, 0);
 
 		clrbits_be32(pll_reg_base + 0x8, BIT(30));
 		udelay(5);

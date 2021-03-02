@@ -1,12 +1,14 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright 2010-2011, 2013 Freescale Semiconductor, Inc.
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #include <common.h>
 #include <command.h>
+#include <env.h>
+#include <hang.h>
 #include <hwconfig.h>
+#include <init.h>
 #include <pci.h>
 #include <i2c.h>
 #include <asm/processor.h>
@@ -20,7 +22,7 @@
 #include <asm/fsl_lbc.h>
 #include <asm/mp.h>
 #include <miiphy.h>
-#include <libfdt.h>
+#include <linux/libfdt.h>
 #include <fdt_support.h>
 #include <fsl_mdio.h>
 #include <tsec.h>
@@ -278,7 +280,7 @@ int checkboard(void)
 	return 0;
 }
 
-#ifdef CONFIG_PCI
+#if defined(CONFIG_PCI) && !defined(CONFIG_DM_PCI)
 void pci_init_board(void)
 {
 	fsl_pcie_init_board(0);
@@ -350,7 +352,8 @@ int board_eth_init(bd_t *bis)
 
 #ifdef CONFIG_VSC7385_ENET
 	/* If a VSC7385 microcode image is present, then upload it. */
-	if ((tmp = getenv("vscfw_addr")) != NULL) {
+	tmp = env_get("vscfw_addr");
+	if (tmp) {
 		vscfw_addr = simple_strtoul(tmp, NULL, 16);
 		printf("uploading VSC7385 microcode from %x\n", vscfw_addr);
 		if (vsc7385_upload_firmware((void *) vscfw_addr,
@@ -438,12 +441,14 @@ int ft_board_setup(void *blob, bd_t *bd)
 
 	ft_cpu_setup(blob, bd);
 
-	base = getenv_bootm_low();
-	size = getenv_bootm_size();
+	base = env_get_bootm_low();
+	size = env_get_bootm_size();
 
 	fdt_fixup_memory(blob, (u64)base, (u64)size);
 
+#if !defined(CONFIG_DM_PCI)
 	FT_FSL_PCI_SETUP;
+#endif
 
 #ifdef CONFIG_QE
 	do_fixup_by_compat(blob, "fsl,qe", "status", "okay",

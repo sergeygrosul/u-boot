@@ -1,19 +1,13 @@
+/* SPDX-License-Identifier: GPL-2.0+ */
 /*
  * Copyright 2010-2011 Freescale Semiconductor, Inc.
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #ifndef __FSL_SECURE_BOOT_H
 #define __FSL_SECURE_BOOT_H
 #include <asm/config_mpc85xx.h>
 
-#ifdef CONFIG_SECURE_BOOT
-
-#ifndef CONFIG_FIT_SIGNATURE
-#define CONFIG_CHAIN_OF_TRUST
-#endif
-
+#ifdef CONFIG_NXP_ESBC
 #if defined(CONFIG_FSL_CORENET)
 #define CONFIG_SYS_PBI_FLASH_BASE		0xc0000000
 #elif defined(CONFIG_TARGET_BSC9132QDS)
@@ -29,10 +23,9 @@
 	defined(CONFIG_TARGET_B4420QDS) || \
 	defined(CONFIG_TARGET_T4160QDS) || \
 	defined(CONFIG_TARGET_T4240QDS) || \
-	defined(CONFIG_T2080QDS) || \
-	defined(CONFIG_T2080RDB) || \
-	defined(CONFIG_T1040QDS) || \
-	defined(CONFIG_T104xD4QDS) || \
+	defined(CONFIG_TARGET_T2080QDS) || \
+	defined(CONFIG_TARGET_T2080RDB) || \
+	defined(CONFIG_TARGET_T1040QDS) || \
 	defined(CONFIG_TARGET_T1040RDB) || \
 	defined(CONFIG_TARGET_T1040D4RDB) || \
 	defined(CONFIG_TARGET_T1042RDB) || \
@@ -81,7 +74,7 @@
  */
 #define CONFIG_FSL_ISBC_KEY_EXT
 #endif
-#endif /* #ifdef CONFIG_SECURE_BOOT */
+#endif /* #ifdef CONFIG_NXP_ESBC */
 
 #ifdef CONFIG_CHAIN_OF_TRUST
 #ifdef CONFIG_SPL_BUILD
@@ -105,24 +98,13 @@
 #define CONFIG_SPL_UBOOT_KEY_HASH	NULL
 #endif /* ifdef CONFIG_SPL_BUILD */
 
-#define CONFIG_CMD_ESBC_VALIDATE
-#define CONFIG_CMD_BLOB
 #define CONFIG_FSL_SEC_MON
-#define CONFIG_SHA_PROG_HW_ACCEL
-#define CONFIG_RSA_FREESCALE_EXP
-
-#ifndef CONFIG_FSL_CAAM
-#define CONFIG_FSL_CAAM
-#endif
 
 #ifndef CONFIG_SPL_BUILD
 /*
  * fsl_setenv_chain_of_trust() must be called from
  * board_late_init()
  */
-#ifndef CONFIG_BOARD_LATE_INIT
-#define CONFIG_BOARD_LATE_INIT
-#endif
 
 /* If Boot Script is not on NOR and is required to be copied on RAM */
 #ifdef CONFIG_BOOTSCRIPT_COPY_RAM

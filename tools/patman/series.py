@@ -1,6 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0+
 # Copyright (c) 2011 The Chromium OS Authors.
-#
-# SPDX-License-Identifier:	GPL-2.0+
 #
 
 from __future__ import print_function
@@ -10,7 +9,9 @@ import os
 
 import get_maintainer
 import gitutil
+import settings
 import terminal
+import tools
 
 # Series-xxx tags that we understand
 valid_series = ['to', 'cc', 'version', 'changes', 'prefix', 'notes', 'name',
@@ -114,16 +115,16 @@ class Series(dict):
             commit = self.commits[upto]
             print(col.Color(col.GREEN, '   %s' % args[upto]))
             cc_list = list(self._generated_cc[commit.patch])
-            for email in set(cc_list) - to_set - cc_set:
+            for email in sorted(set(cc_list) - to_set - cc_set):
                 if email == None:
                     email = col.Color(col.YELLOW, "<alias '%s' not found>"
                             % tag)
                 if email:
                     print('      Cc: ', email)
         print
-        for item in to_set:
+        for item in sorted(to_set):
             print('To:\t ', item)
-        for item in cc_set - to_set:
+        for item in sorted(cc_set - to_set):
             print('Cc:\t ', item)
         print('Version: ', self.get('version'))
         print('Prefix:\t ', self.get('prefix'))
@@ -131,7 +132,7 @@ class Series(dict):
             print('Cover: %d lines' % len(self.cover))
             cover_cc = gitutil.BuildEmailList(self.get('cover_cc', ''))
             all_ccs = itertools.chain(cover_cc, *self._generated_cc.values())
-            for email in set(all_ccs) - to_set - cc_set:
+            for email in sorted(set(all_ccs) - to_set - cc_set):
                     print('      Cc: ', email)
         if cmd:
             print('Git command: %s' % cmd)
@@ -202,7 +203,7 @@ class Series(dict):
             print(col.Color(col.RED, str))
 
     def MakeCcFile(self, process_tags, cover_fname, raise_on_error,
-                   add_maintainers):
+                   add_maintainers, limit):
         """Make a cc file for us to use for per-commit Cc automation
 
         Also stores in self._generated_cc to make ShowActions() faster.
@@ -212,30 +213,47 @@ class Series(dict):
             cover_fname: If non-None the name of the cover letter.
             raise_on_error: True to raise an error when an alias fails to match,
                 False to just print a message.
-            add_maintainers: Call the get_maintainers to CC maintainers
+            add_maintainers: Either:
+                True/False to call the get_maintainers to CC maintainers
+                List of maintainers to include (for testing)
+            limit: Limit the length of the Cc list
         Return:
             Filename of temp file created
         """
+        col = terminal.Color()
         # Look for commit tags (of the form 'xxx:' at the start of the subject)
         fname = '/tmp/patman.%d' % os.getpid()
-        fd = open(fname, 'w')
+        fd = open(fname, 'w', encoding='utf-8')
         all_ccs = []
         for commit in self.commits:
-            list = []
+            cc = []
             if process_tags:
-                list += gitutil.BuildEmailList(commit.tags,
+                cc += gitutil.BuildEmailList(commit.tags,
                                                raise_on_error=raise_on_error)
-            list += gitutil.BuildEmailList(commit.cc_list,
+            cc += gitutil.BuildEmailList(commit.cc_list,
                                            raise_on_error=raise_on_error)
-            if add_maintainers:
-                list += get_maintainer.GetMaintainer(commit.patch)
-            all_ccs += list
-            print(commit.patch, ', '.join(set(list)), file=fd)
-            self._generated_cc[commit.patch] = list
+            if type(add_maintainers) == type(cc):
+                cc += add_maintainers
+            elif add_maintainers:
+                cc += get_maintainer.GetMaintainer(commit.patch)
+            for x in set(cc) & set(settings.bounces):
+                print(col.Color(col.YELLOW, 'Skipping "%s"' % x))
+            cc = set(cc) - set(settings.bounces)
+            cc = [tools.FromUnicode(m) for m in cc]
+            if limit is not None:
+                cc = cc[:limit]
+            all_ccs += cc
+            print(commit.patch, '\0'.join(sorted(set(cc))), file=fd)
+            self._generated_cc[commit.patch] = cc
 
         if cover_fname:
             cover_cc = gitutil.BuildEmailList(self.get('cover_cc', ''))
-            print(cover_fname, ', '.join(set(cover_cc + all_ccs)), file=fd)
+            cover_cc = [tools.FromUnicode(m) for m in cover_cc]
+            cover_cc = list(set(cover_cc + all_ccs))
+            if limit is not None:
+                cover_cc = cover_cc[:limit]
+            cc_list = '\0'.join([tools.ToUnicode(x) for x in sorted(cover_cc)])
+            print(cover_fname, cc_list, file=fd)
 
         fd.close()
         return fname

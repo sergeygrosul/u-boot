@@ -1,13 +1,14 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * (C) Copyright 2000-2009
  * Wolfgang Denk, DENX Software Engineering, wd@denx.de.
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #include <common.h>
 #include <bootm.h>
 #include <command.h>
+#include <image.h>
+#include <irq_func.h>
 #include <lmb.h>
 #include <linux/compiler.h>
 
@@ -33,9 +34,9 @@ static int bootz_start(cmd_tbl_t *cmdtp, int flag, int argc,
 
 	/* Setup Linux kernel zImage entry point */
 	if (!argc) {
-		images->ep = load_addr;
+		images->ep = image_load_addr;
 		debug("*  kernel: default image load address = 0x%08lx\n",
-				load_addr);
+				image_load_addr);
 	} else {
 		images->ep = simple_strtoul(argv[0], NULL, 16);
 		debug("*  kernel: cmdline image address = 0x%08lx\n",
@@ -76,6 +77,9 @@ int do_bootz(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 
 	images.os.os = IH_OS_LINUX;
 	ret = do_bootm_states(cmdtp, flag, argc, argv,
+#ifdef CONFIG_SYS_BOOT_RAMDISK_HIGH
+			      BOOTM_STATE_RAMDISK |
+#endif
 			      BOOTM_STATE_OS_PREP | BOOTM_STATE_OS_FAKE_GO |
 			      BOOTM_STATE_OS_GO,
 			      &images, 1);

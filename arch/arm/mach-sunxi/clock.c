@@ -1,11 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * (C) Copyright 2007-2012
  * Allwinner Technology Co., Ltd. <www.allwinnertech.com>
  * Tom Cubie <tangliang@allwinnertech.com>
  *
  * (C) Copyright 2013 Luke Kenneth Casson Leighton <lkcl@lkcl.net>
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #include <common.h>
@@ -17,10 +16,6 @@
 #include <asm/arch/sys_proto.h>
 
 __weak void clock_init_sec(void)
-{
-}
-
-__weak void clock_init_quirk(void)
 {
 }
 
@@ -36,7 +31,6 @@ int clock_init(void)
 #endif
 	clock_init_uart();
 	clock_init_sec();
-	clock_init_quirk();
 
 	return 0;
 }

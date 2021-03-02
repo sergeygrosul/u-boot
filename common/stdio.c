@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (C) 2009 Sergey Kubushyn <ksi@koi8.net>
  *
@@ -5,8 +6,6 @@
  *
  * (C) Copyright 2000
  * Paolo Scaffardi, AIRVENT SAM s.p.a - RIMINI(ITALY), arsenio@tin.it
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #include <config.h>
@@ -17,11 +16,9 @@
 #include <malloc.h>
 #include <stdio_dev.h>
 #include <serial.h>
-#ifdef CONFIG_LOGBUFFER
-#include <logbuff.h>
-#endif
+#include <splash.h>
 
-#if defined(CONFIG_HARD_I2C) || defined(CONFIG_SYS_I2C)
+#if defined(CONFIG_SYS_I2C)
 #include <i2c.h>
 #endif
 
@@ -346,9 +343,6 @@ int stdio_add_devices(void)
 #ifdef CONFIG_SYS_I2C
 	i2c_init_all();
 #else
-#if defined(CONFIG_HARD_I2C)
-	i2c_init (CONFIG_SYS_I2C_SPEED, CONFIG_SYS_I2C_SLAVE);
-#endif
 #endif
 #ifdef CONFIG_DM_VIDEO
 	/*
@@ -373,6 +367,9 @@ int stdio_add_devices(void)
 	if (ret)
 		printf("%s: Video device failed (ret=%d)\n", __func__, ret);
 #endif /* !CONFIG_SYS_CONSOLE_IS_IN_ENV */
+#if defined(CONFIG_SPLASH_SCREEN) && defined(CONFIG_CMD_BMP)
+	splash_display();
+#endif /* CONFIG_SPLASH_SCREEN && CONFIG_CMD_BMP */
 #else
 # if defined(CONFIG_LCD)
 	drv_lcd_init ();
@@ -383,9 +380,6 @@ int stdio_add_devices(void)
 #endif /* CONFIG_DM_VIDEO */
 #if defined(CONFIG_KEYBOARD) && !defined(CONFIG_DM_KEYBOARD)
 	drv_keyboard_init ();
-#endif
-#ifdef CONFIG_LOGBUFFER
-	drv_logbuff_init ();
 #endif
 	drv_system_init ();
 	serial_stdio_init ();

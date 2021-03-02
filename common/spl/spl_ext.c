@@ -1,15 +1,13 @@
-/*
- * SPDX-License-Identifier:	GPL-2.0+
- */
+// SPDX-License-Identifier: GPL-2.0+
 
 #include <common.h>
+#include <env.h>
 #include <spl.h>
 #include <asm/u-boot.h>
 #include <ext4fs.h>
 #include <errno.h>
 #include <image.h>
 
-#ifdef CONFIG_SPL_EXT_SUPPORT
 int spl_load_image_ext(struct spl_image_info *spl_image,
 		       struct blk_desc *block_dev, int partition,
 		       const char *filename)
@@ -19,8 +17,7 @@ int spl_load_image_ext(struct spl_image_info *spl_image,
 	loff_t filelen, actlen;
 	disk_partition_t part_info = {};
 
-	header = (struct image_header *)(CONFIG_SYS_TEXT_BASE -
-						sizeof(struct image_header));
+	header = spl_get_load_buffer(-sizeof(*header), sizeof(*header));
 
 	if (part_get_info(block_dev, partition, &part_info)) {
 		printf("spl: no partition table found\n");
@@ -90,7 +87,7 @@ int spl_load_image_ext_os(struct spl_image_info *spl_image,
 		return -1;
 	}
 #if defined(CONFIG_SPL_ENV_SUPPORT)
-	file = getenv("falcon_args_file");
+	file = env_get("falcon_args_file");
 	if (file) {
 		err = ext4fs_open(file, &filelen);
 		if (err < 0) {
@@ -103,7 +100,7 @@ int spl_load_image_ext_os(struct spl_image_info *spl_image,
 			       file, err);
 			goto defaults;
 		}
-		file = getenv("falcon_image_file");
+		file = env_get("falcon_image_file");
 		if (file) {
 			err = spl_load_image_ext(spl_image, block_dev,
 						 partition, file);
@@ -145,5 +142,4 @@ int spl_load_image_ext_os(struct spl_image_info *spl_image,
 {
 	return -ENOSYS;
 }
-#endif
 #endif

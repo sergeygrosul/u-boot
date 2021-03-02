@@ -1,11 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * MUSB OTG driver core code
  *
  * Copyright 2005 Mentor Graphics Corporation
  * Copyright (C) 2005-2006 by Texas Instruments
  * Copyright (C) 2006-2007 Nokia Corporation
- *
- * SPDX-License-Identifier:	GPL-2.0
  */
 
 /*
@@ -66,6 +65,8 @@
  */
 
 #ifndef __UBOOT__
+#include <dm/device_compat.h>
+#include <dm/devres.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
@@ -116,12 +117,9 @@ static inline struct musb *dev_to_musb(struct device *dev)
 {
 	return dev_get_drvdata(dev);
 }
-#endif
 
 /*-------------------------------------------------------------------------*/
 
-#ifndef __UBOOT__
-#ifndef CONFIG_BLACKFIN
 static int musb_ulpi_read(struct usb_phy *phy, u32 offset)
 {
 	void __iomem *addr = phy->io_priv;
@@ -203,10 +201,6 @@ out:
 
 	return ret;
 }
-#else
-#define musb_ulpi_read		NULL
-#define musb_ulpi_write		NULL
-#endif
 
 static struct usb_phy_io_ops musb_ulpi_access = {
 	.read = musb_ulpi_read,
@@ -216,7 +210,7 @@ static struct usb_phy_io_ops musb_ulpi_access = {
 
 /*-------------------------------------------------------------------------*/
 
-#if !defined(CONFIG_USB_MUSB_TUSB6010) && !defined(CONFIG_USB_MUSB_BLACKFIN)
+#if !defined(CONFIG_USB_MUSB_TUSB6010)
 
 /*
  * Load an endpoint's FIFO
@@ -1015,6 +1009,7 @@ void musb_stop(struct musb *musb)
 	 *  - ...
 	 */
 	musb_platform_try_idle(musb, 0);
+	musb_platform_exit(musb);
 }
 
 #ifndef __UBOOT__
@@ -1866,7 +1861,11 @@ allocate_instance(struct device *dev,
 	musb->ctrl_base = mbase;
 	musb->nIrq = -ENODEV;
 	musb->config = config;
+#ifdef __UBOOT__
+	assert_noisy(musb->config->num_eps <= MUSB_C_NUM_EPS);
+#else
 	BUG_ON(musb->config->num_eps > MUSB_C_NUM_EPS);
+#endif
 	for (epnum = 0, ep = musb->endpoints;
 			epnum < musb->config->num_eps;
 			epnum++, ep++) {
@@ -1876,6 +1875,7 @@ allocate_instance(struct device *dev,
 
 	musb->controller = dev;
 
+	musb->dyn_fifo = config->dyn_fifo;
 	return musb;
 }
 
