@@ -456,7 +456,7 @@ static void sunxi_composer_init(void)
 #ifndef CONFIG_MACH_SUN4I /* On sun4i the frontend does the dma */
 	setbits_le32(&ccm->dram_clk_gate, 1 << CCM_DRAM_GATE_OFFSET_DE_BE0);
 #endif
-	clock_set_de_mod_clock(&ccm->be0_clk_cfg, 300000000);
+	clock_set_de_mod_clock(&ccm->be1_clk_cfg, 300000000);	// TODO: Check this!!!
 
 	/* Engine bug, clear registers after reset */
 	for (i = 0x0800; i < 0x1000; i += 4)

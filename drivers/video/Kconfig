@@ -490,6 +490,15 @@ config LOGICORE_DP_TX
 	  Note that this is a pure transmitter device, and has no display
 	  capabilities by itself.
 
+config VIDEO_SUNXI
+	bool "Simple SUNXI display driver for preconfigured display"
+	help
+	  Enables a simple generic display driver which utilizes the
+	  simple-framebuffer devicetree bindings.
+	  This driver assumes that the display hardware has been initialized
+	  before u-boot starts, and u-boot will simply render to the pre-
+	  allocated frame buffer surface.
+
 config VIDEO_BROADWELL_IGD
 	bool "Enable Intel Broadwell integrated graphics device"
 	depends on X86

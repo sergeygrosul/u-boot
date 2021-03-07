@@ -244,6 +244,8 @@ extern int soft_i2c_gpio_scl;
 #endif
 #elif CONFIG_CONS_INDEX == 2 && defined(CONFIG_MACH_SUN8I_S3)
 #define OF_STDOUT_PATH		"/soc@01c00000/serial@01c28400:115200"
+#elif CONFIG_CONS_INDEX == 2 && defined(CONFIG_MACH_SUN8I_V3S)
+#define OF_STDOUT_PATH		"/soc@01c00000/serial@01c28400:115200"    
 #elif CONFIG_CONS_INDEX == 2 && defined(CONFIG_MACH_SUN5I)
 #define OF_STDOUT_PATH		"/soc@01c00000/serial@01c28400:115200"
 #elif CONFIG_CONS_INDEX == 3 && defined(CONFIG_MACH_SUN8I)
@@ -360,7 +362,7 @@ extern int soft_i2c_gpio_scl;
 		"fi\0"
 
 #define BOOTENV_DEV_NAME_MMC_AUTO(devtypeu, devtypel, instance) \
-	"mmc_auto "
+	"mmc0 mmc_auto "
 
 #define BOOT_TARGET_DEVICES_MMC(func) func(MMC_AUTO, mmc_auto, na)
 #else
