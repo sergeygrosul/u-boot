@@ -55,6 +55,17 @@
 
     chosen {
         stdout-path = "serial0:115200n8";
+
+
+/*        framebuffer-lcd0 {
+            compatible = "allwinner,simple-framebuffer",
+                     "simple-framebuffer";
+            allwinner,pipeline = "de_be0-lcd0";
+            clocks = <&ccu CLK_AHB_LCD0>, <&ccu CLK_AHB_DE_BE0>,
+                 <&ccu CLK_DE_BE0>, <&ccu CLK_TCON0_CH0>,
+                 <&ccu CLK_DRAM_DE_BE0>;
+            status = "okay";
+        };*/
     };
 
     backlight: backlight {
@@ -103,9 +114,15 @@
 
 &mmc2 {
     non-removable;
-    max-speed = <20000000>;
-    bus-width = <8>;
+//    max-speed = <20000000>;
+    bus-width = <4>;
     status = "okay";
+
+    emmc: emmc@0 {
+        reg = <0>;
+        compatible = "mmc-card";
+        broken-hpi;
+    };    
 };
 
 &spi0 {
@@ -116,11 +133,11 @@
 &i2c0 {
     status = "okay";
 
-/*    axp209: pmic@34 {
+    axp209: pmic@34 {
         reg = <0x34>;
         interrupt-parent = <&nmi_intc>;
         interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
-    };*/
+    };
 };
 
 &pio {
@@ -130,7 +147,7 @@
         bias-pull-up;
     };
 
-    test: st@0 {
+/*    test: st@0 {
         pins = "PE24", "PG8", "PG9", "PG0", "PG4", "PG5";
         function = "gpio_in";
         drive-strength = <20>;
@@ -142,9 +159,55 @@
         function = "gpio_out";
         drive-strength = <20>;
         bias-pull-down;
-    };
+    };*/
 
 };
+
+#include "axp209.dtsi"
+
+&reg_dcdc2 {
+    regulator-always-on;
+    regulator-min-microvolt = <1000000>;
+    regulator-max-microvolt = <1100000>;
+    regulator-name = "vdd-cpu";
+};
+
+&reg_dcdc3 {
+    regulator-always-on;
+    regulator-min-microvolt = <1000000>;
+    regulator-max-microvolt = <3300000>;
+    regulator-name = "vdd-int-dll";
+};
+
+&reg_ldo1 {
+    regulator-always-on;
+    regulator-min-microvolt = <1300000>;
+    regulator-max-microvolt = <3300000>;
+    regulator-name = "vdd-rtc";
+};
+
+&reg_ldo2 {
+    regulator-always-on;
+    regulator-min-microvolt = <3000000>;
+    regulator-max-microvolt = <3000000>;
+    regulator-name = "avcc";
+};
+
+&reg_ldo3 {
+    regulator-min-microvolt = <1000000>;
+    regulator-max-microvolt = <1200000>;
+    regulator-name = "vddio-csi0";
+    regulator-soft-start;
+    regulator-ramp-delay = <1600>;
+};
+
+&reg_ldo4 {
+    regulator-min-microvolt = <2800000>;
+    regulator-max-microvolt = <2800000>;
+    regulator-name = "vddio-csi1";
+};
+
+
 
 &uart1 {
     status = "okay";
@@ -173,4 +236,6 @@
 &pwm {
     status = "okay";
 };
+
+
 
