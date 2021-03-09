@@ -53,19 +53,17 @@
         serial0 = &uart1;
     };
 
+    mmc2_pwrseq: mmc2_pwrseq {
+        compatible = "mmc-pwrseq-emmc";
+        reset-gpios = <&pio 2 2 GPIO_ACTIVE_LOW>;   // PC2
+    };
+
     chosen {
         stdout-path = "serial0:115200n8";
 
-
-/*        framebuffer-lcd0 {
-            compatible = "allwinner,simple-framebuffer",
-                     "simple-framebuffer";
-            allwinner,pipeline = "de_be0-lcd0";
-            clocks = <&ccu CLK_AHB_LCD0>, <&ccu CLK_AHB_DE_BE0>,
-                 <&ccu CLK_DE_BE0>, <&ccu CLK_TCON0_CH0>,
-                 <&ccu CLK_DRAM_DE_BE0>;
+        framebuffer-lcd0 {
             status = "okay";
-        };*/
+        };        
     };
 
     backlight: backlight {
@@ -114,9 +112,11 @@
 
 &mmc2 {
     non-removable;
-//    max-speed = <20000000>;
-    bus-width = <4>;
+    bus-width = <8>;
     status = "okay";
+    vmmc-supply = <&reg_vcc3v3>;
+    vqmmc-supply = <&reg_vcc3v3>;
+    mmc-pwrseq = <&mmc2_pwrseq>;
 
     emmc: emmc@0 {
         reg = <0>;

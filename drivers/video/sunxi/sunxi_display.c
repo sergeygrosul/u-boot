@@ -456,7 +456,7 @@ static void sunxi_composer_init(void)
 #ifndef CONFIG_MACH_SUN4I /* On sun4i the frontend does the dma */
 	setbits_le32(&ccm->dram_clk_gate, 1 << CCM_DRAM_GATE_OFFSET_DE_BE0);
 #endif
-	clock_set_de_mod_clock(&ccm->be1_clk_cfg, 300000000);	// TODO: Check this!!!
+	clock_set_de_mod_clock(&ccm->be0_clk_cfg, 300000000);
 
 	/* Engine bug, clear registers after reset */
 	for (i = 0x0800; i < 0x1000; i += 4)
@@ -601,12 +601,16 @@ static void sunxi_lcdc_backlight_enable(void)
 		gpio_direction_output(pin, 1);
 
 	pin = sunxi_name_to_gpio(CONFIG_VIDEO_LCD_BL_PWM);
-#ifdef SUNXI_PWM_PIN0
-	if (pin == SUNXI_PWM_PIN0) {
+#ifdef SUNXI_PWM_PIN0	
+	if (pin == SUNXI_PWM_PIN0)
+	{
+		printf("%s: Init SUNXI PWM0 as LCD backlight pinNo = %d\n",__func__, SUNXI_PWM_PIN0);
+
 		writel(SUNXI_PWM_CTRL_POLARITY0(PWM_ON) |
 		       SUNXI_PWM_CTRL_ENABLE0 |
 		       SUNXI_PWM_CTRL_PRESCALE0(0xf), SUNXI_PWM_CTRL_REG);
-		writel(SUNXI_PWM_PERIOD_80PCT, SUNXI_PWM_CH0_PERIOD);
+//		writel(SUNXI_PWM_PERIOD_80PCT, SUNXI_PWM_CH0_PERIOD);
+		writel(0x04af00f0/* = 20%*/  /* was: SUNXI_PWM_PERIOD_80PCT*/, SUNXI_PWM_CH0_PERIOD);
 		sunxi_gpio_set_cfgpin(pin, SUNXI_PWM_MUX);
 		return;
 	}
@@ -615,20 +619,164 @@ static void sunxi_lcdc_backlight_enable(void)
 		gpio_direction_output(pin, PWM_ON);
 }
 
+static int sunxi_lcdc_get_clk_delay(const struct ctfb_res_modes *mode, int tcon)
+{
+	int delay;
+
+	delay = mode->lower_margin + mode->vsync_len + mode->upper_margin;
+	if (mode->vmode == FB_VMODE_INTERLACED)
+		delay /= 2;
+	if (tcon == 1)
+		delay -= 2;
+
+	return (delay > 30) ? 30 : delay;
+}
+
+/*
+ * LCDC, what allwinner calls a CRTC, so timing controller and serializer.
+ */
+static void sunxi_lcdc_pll_set(int tcon, int dotclock,
+			       int *clk_div, int *clk_double)
+{
+	struct sunxi_ccm_reg * const ccm =
+		(struct sunxi_ccm_reg *)SUNXI_CCM_BASE;
+	int value, n, m, min_m, max_m, diff;
+	int best_n = 0, best_m = 0, best_diff = 0x0FFFFFFF;
+	int best_double = 0;
+	bool use_mipi_pll = false;
+
+	if (tcon == 0) {
+#ifdef CONFIG_VIDEO_LCD_IF_PARALLEL
+		min_m = 6;
+		max_m = 127;
+#endif
+#ifdef CONFIG_VIDEO_LCD_IF_LVDS
+		min_m = max_m = 7;
+#endif
+	} else {
+		min_m = 1;
+		max_m = 15;
+	}
+
+	/*
+	 * Find the lowest divider resulting in a matching clock, if there
+	 * is no match, pick the closest lower clock, as monitors tend to
+	 * not sync to higher frequencies.
+	 */
+	for (m = min_m; m <= max_m; m++) {
+		n = (m * dotclock) / 3000;
+
+		if ((n >= 9) && (n <= 127)) {
+			value = (3000 * n) / m;
+			diff = dotclock - value;
+			if (diff < best_diff) {
+				best_diff = diff;
+				best_m = m;
+				best_n = n;
+				best_double = 0;
+			}
+		}
+
+		/* These are just duplicates */
+		if (!(m & 1))
+			continue;
+
+		/* TCONs with DE2 do not support double clock */
+#ifndef CONFIG_SUNXI_DE2
+		n = (m * dotclock) / 6000;
+		if ((n >= 9) && (n <= 127)) {
+			value = (6000 * n) / m;
+			diff = dotclock - value;
+			if (diff < best_diff) {
+				best_diff = diff;
+				best_m = m;
+				best_n = n;
+				best_double = 1;
+			}
+		}
+#endif
+	}
+
+#ifdef CONFIG_MACH_SUN6I
+	/*
+	 * Use the MIPI pll if we've been unable to find any matching setting
+	 * for PLL3, this happens with high dotclocks because of min_m = 6.
+	 */
+	if (tcon == 0 && best_n == 0) {
+		use_mipi_pll = true;
+		best_m = 6;  /* Minimum m for tcon0 */
+	}
+
+	if (use_mipi_pll) {
+		clock_set_pll3(297000000); /* Fix the video pll at 297 MHz */
+		clock_set_mipi_pll(best_m * dotclock * 1000);
+		debug("dotclock: %dkHz = %dkHz via mipi pll\n",
+		      dotclock, clock_get_mipi_pll() / best_m / 1000);
+	} else
+#endif
+	{
+		clock_set_pll3(best_n * 3000000);
+		debug("dotclock: %dkHz = %dkHz: (%d * 3MHz * %d) / %d\n",
+		      dotclock,
+		      (best_double + 1) * clock_get_pll3() / best_m / 1000,
+		      best_double + 1, best_n, best_m);
+	}
+
+	if (tcon == 0) {
+		u32 pll;
+
+		if (use_mipi_pll)
+			pll = CCM_LCD_CH0_CTRL_MIPI_PLL;
+		else if (best_double)
+			pll = CCM_LCD_CH0_CTRL_PLL3_2X;
+		else
+			pll = CCM_LCD_CH0_CTRL_PLL3;
+
+		writel(CCM_LCD_CH0_CTRL_GATE | CCM_LCD_CH0_CTRL_RST | pll,
+		       &ccm->lcd0_ch0_clk_cfg);
+	} else {
+		writel(CCM_LCD_CH1_CTRL_GATE |
+		       (best_double ? CCM_LCD_CH1_CTRL_PLL3_2X :
+				      CCM_LCD_CH1_CTRL_PLL3) |
+		       CCM_LCD_CH1_CTRL_M(best_m), &ccm->lcd0_ch1_clk_cfg);
+		if (sunxi_is_composite())
+			setbits_le32(&ccm->lcd0_ch1_clk_cfg,
+				     CCM_LCD_CH1_CTRL_HALF_SCLK1);
+	}
+
+	*clk_div = best_m;
+	*clk_double = best_double;
+}
+
+
 static void sunxi_lcdc_tcon0_mode_set(const struct ctfb_res_modes *mode,
 				      bool for_ext_vga_dac)
 {
 	struct sunxi_lcdc_reg * const lcdc =
 		(struct sunxi_lcdc_reg *)SUNXI_LCD0_BASE;
-	struct sunxi_ccm_reg * const ccm =
-		(struct sunxi_ccm_reg *)SUNXI_CCM_BASE;
+/*	struct sunxi_ccm_reg * const ccm =
+		(struct sunxi_ccm_reg *)SUNXI_CCM_BASE;*/
 	int clk_div, clk_double, pin;
-	struct display_timing timing;
+//	struct display_timing timing;
+	
+	int bp, clk_delay, total, val;	
+
+#ifdef CONFIG_MACH_SUN8I_V3S
+	for (pin = SUNXI_GPE(0); pin <= SUNXI_GPE(24); pin++) {
+		if (pin >= SUNXI_GPE(20) && pin <= SUNXI_GPE(22))
+			continue; /* These pins are not LCD */
+		sunxi_gpio_set_cfgpin(pin, SUN8I_V3S_GPE_LCD);
+	}
+#else /* !CONFIG_MACH_SUN8I_V3S */
 
 #if defined CONFIG_MACH_SUN8I && defined CONFIG_VIDEO_LCD_IF_LVDS
 	for (pin = SUNXI_GPD(18); pin <= SUNXI_GPD(27); pin++) {
 #else
+	#if defined CONFIG_MACH_SUN8I_S3 
+	for (pin = SUNXI_GPD(0); pin <= SUNXI_GPD(21); pin++) {
+	#else
 	for (pin = SUNXI_GPD(0); pin <= SUNXI_GPD(27); pin++) {
+	#endif
 #endif
 #ifdef CONFIG_VIDEO_LCD_IF_PARALLEL
 		sunxi_gpio_set_cfgpin(pin, SUNXI_GPD_LCD0);
@@ -640,13 +788,80 @@ static void sunxi_lcdc_tcon0_mode_set(const struct ctfb_res_modes *mode,
 		sunxi_gpio_set_drv(pin, 3);
 #endif
 	}
+#endif // CONFIG_MACH_SUN8I_V3S
 
-	lcdc_pll_set(ccm, 0, mode->pixclock_khz, &clk_div, &clk_double,
+
+	sunxi_lcdc_pll_set(0, mode->pixclock_khz, &clk_div, &clk_double);
+
+	/* Use tcon0 */
+	clrsetbits_le32(&lcdc->ctrl, SUNXI_LCDC_CTRL_IO_MAP_MASK,
+			SUNXI_LCDC_CTRL_IO_MAP_TCON0);
+
+	clk_delay = sunxi_lcdc_get_clk_delay(mode, 0);
+	writel(SUNXI_LCDC_TCON0_CTRL_ENABLE |
+	       SUNXI_LCDC_TCON0_CTRL_CLK_DELAY(clk_delay), &lcdc->tcon0_ctrl);
+
+	writel(SUNXI_LCDC_TCON0_DCLK_ENABLE |
+	       SUNXI_LCDC_TCON0_DCLK_DIV(clk_div), &lcdc->tcon0_dclk);
+
+	writel(SUNXI_LCDC_X(mode->xres) | SUNXI_LCDC_Y(mode->yres),
+	       &lcdc->tcon0_timing_active);
+
+	bp = mode->hsync_len + mode->left_margin;
+	total = mode->xres + mode->right_margin + bp;
+	writel(SUNXI_LCDC_TCON0_TIMING_H_TOTAL(total) |
+	       SUNXI_LCDC_TCON0_TIMING_H_BP(bp), &lcdc->tcon0_timing_h);
+
+	bp = mode->vsync_len + mode->upper_margin;
+	total = mode->yres + mode->lower_margin + bp;
+	writel(SUNXI_LCDC_TCON0_TIMING_V_TOTAL(total) |
+	       SUNXI_LCDC_TCON0_TIMING_V_BP(bp), &lcdc->tcon0_timing_v);
+
+#ifdef CONFIG_VIDEO_LCD_IF_PARALLEL
+	writel(SUNXI_LCDC_X(mode->hsync_len) | SUNXI_LCDC_Y(mode->vsync_len),
+	       &lcdc->tcon0_timing_sync);
+
+	writel(0, &lcdc->tcon0_hv_intf);
+	writel(0, &lcdc->tcon0_cpu_intf);
+#endif
+
+	if (sunxi_display.depth == 18 || sunxi_display.depth == 16) {
+		writel(SUNXI_LCDC_TCON0_FRM_SEED, &lcdc->tcon0_frm_seed[0]);
+		writel(SUNXI_LCDC_TCON0_FRM_SEED, &lcdc->tcon0_frm_seed[1]);
+		writel(SUNXI_LCDC_TCON0_FRM_SEED, &lcdc->tcon0_frm_seed[2]);
+		writel(SUNXI_LCDC_TCON0_FRM_SEED, &lcdc->tcon0_frm_seed[3]);
+		writel(SUNXI_LCDC_TCON0_FRM_SEED, &lcdc->tcon0_frm_seed[4]);
+		writel(SUNXI_LCDC_TCON0_FRM_SEED, &lcdc->tcon0_frm_seed[5]);
+		writel(SUNXI_LCDC_TCON0_FRM_TAB0, &lcdc->tcon0_frm_table[0]);
+		writel(SUNXI_LCDC_TCON0_FRM_TAB1, &lcdc->tcon0_frm_table[1]);
+		writel(SUNXI_LCDC_TCON0_FRM_TAB2, &lcdc->tcon0_frm_table[2]);
+		writel(SUNXI_LCDC_TCON0_FRM_TAB3, &lcdc->tcon0_frm_table[3]);
+		writel(((sunxi_display.depth == 18) ?
+			SUNXI_LCDC_TCON0_FRM_CTRL_RGB666 :
+			SUNXI_LCDC_TCON0_FRM_CTRL_RGB565),
+		       &lcdc->tcon0_frm_ctrl);
+	}
+
+	val = SUNXI_LCDC_TCON0_IO_POL_DCLK_PHASE(CONFIG_VIDEO_LCD_DCLK_PHASE);
+	if (!(mode->sync & FB_SYNC_HOR_HIGH_ACT))
+		val |= SUNXI_LCDC_TCON_HSYNC_MASK;
+	if (!(mode->sync & FB_SYNC_VERT_HIGH_ACT))
+		val |= SUNXI_LCDC_TCON_VSYNC_MASK;
+
+#ifdef CONFIG_VIDEO_VGA_VIA_LCD_FORCE_SYNC_ACTIVE_HIGH
+	if (for_ext_vga_dac)
+		val = 0;
+#endif
+	writel(val, &lcdc->tcon0_io_polarity);
+
+	writel(0, &lcdc->tcon0_io_tristate);
+
+/*	lcdc_pll_set(ccm, 0, mode->pixclock_khz, &clk_div, &clk_double,
 		     sunxi_is_composite());
 
 	video_ctfb_mode_to_display_timing(mode, &timing);
 	lcdc_tcon0_mode_set(lcdc, &timing, clk_div, for_ext_vga_dac,
-			    sunxi_display.depth, CONFIG_VIDEO_LCD_DCLK_PHASE);
+			    sunxi_display.depth, CONFIG_VIDEO_LCD_DCLK_PHASE);*/
 }
 
 #if defined CONFIG_VIDEO_HDMI || defined CONFIG_VIDEO_VGA || defined CONFIG_VIDEO_COMPOSITE

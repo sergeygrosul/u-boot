@@ -204,6 +204,7 @@ int env_load(void)
 			return 0;
 		} else if (ret == -ENOMSG) {
 			/* Handle "bad CRC" case */
+			printf("Bad CRC\n");
 			if (best_prio == -1)
 				best_prio = prio;
 		} else {
