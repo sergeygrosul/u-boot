@@ -36,8 +36,9 @@ static void sunxi_lcdc_config_pinmux(void)
 	int pin;
 
 	for (pin = SUNXI_GPE(0); pin <= SUNXI_GPE(24); pin++) {
-		sunxi_gpio_set_cfgpin(pin, SUNXI_GPE_LCD0);
-		sunxi_gpio_set_drv(pin, 3);
+		if (pin >= SUNXI_GPE(20) && pin <= SUNXI_GPE(22))
+			continue; /* These pins are not LCD */
+		sunxi_gpio_set_cfgpin(pin, SUN8I_V3S_GPE_LCD);
 	}
 #endif
 }

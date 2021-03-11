@@ -442,7 +442,7 @@ extern int soft_i2c_gpio_scl;
 
 #ifdef CONFIG_USB_KEYBOARD
 #define CONSOLE_STDIN_SETTINGS \
-	"preboot=usb start\0" \
+	"preboot=run loadsplash; usb start\0" \
 	"stdin=serial,usbkbd\0"
 #else
 #define CONSOLE_STDIN_SETTINGS \
@@ -454,9 +454,15 @@ extern int soft_i2c_gpio_scl;
 #define CONFIG_BMP_16BPP
 #define CONFIG_BMP_24BPP
 #define CONFIG_BMP_32BPP
+#define CONFIG_SPLASH_SCREEN_ALIGN
 #define CONFIG_SPLASH_SCREEN
 #define CONFIG_SPLASH_SOURCE
-#define SPLASHIMAGE_ENV_SETTINGS "splashimage=" __stringify(SDRAM_OFFSET(2000000)) "\0"
+//#define SPLASHIMAGE_ENV_SETTINGS "splashimage=" __stringify(SDRAM_OFFSET(2000000)) "\0"
+#define SPLASHIMAGE_ENV_SETTINGS \
+	"splashpos=m,m\0" \
+	"splashimage=42000000\0" \
+	"loadsplash=for prefix in / /boot/; do if test -e mmc 0 /boot/boot.bmp; then load mmc 0 42000000 /boot/boot.bmp; bmp d 42000000; fi; if test -e mmc 1 /boot/boot.bmp; then load mmc 1 42000000 /boot/boot.bmp; bmp d 42000000; fi; done\0"
+
 #define CONFIG_ENV_DYNAMIC_DEFAULT
 #else
 #define SPLASHIMAGE_ENV_SETTINGS

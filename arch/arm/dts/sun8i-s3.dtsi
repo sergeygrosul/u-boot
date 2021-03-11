@@ -49,25 +49,6 @@
     #size-cells = <1>;
     interrupt-parent = <&gic>;
     
-    chosen {
-        #address-cells = <1>;
-        #size-cells = <1>;
-        ranges;
-
-        framebuffer-lcd0 {
-            compatible = "allwinner,simple-framebuffer",
-                     "simple-framebuffer";
-            allwinner,pipeline = "de_be0-lcd0";
-//            clocks = <&ccu CLK_BUS_VE>, <&ccu CLK_BUS_DE>,
-//                 <&ccu CLK_DE>, <&ccu CLK_TCON0>,
-//                 <&ccu CLK_DRAM_VE>;
-/*            clocks = <&ccu CLK_AHB_LCD0>, <&ccu CLK_AHB_DE_BE0>,
-                 <&ccu CLK_DE_BE0>, <&ccu CLK_TCON0_CH0>,
-                 <&ccu CLK_DRAM_DE_BE0>;*/
-            status = "disabled";
-        };
-    };
-
     soc {
         compatible = "simple-bus";
         #address-cells = <1>;
@@ -195,6 +176,35 @@
         pins = "PB6", "PB7";
         function = "i2c0";
     };  
+
+    pwm0_pins: pwm0 {
+        pins = "PB4";
+        function = "pwm0";
+    };
+
+    /omit-if-no-ref/
+    pwm1_pins: pwm1 {
+        pins = "PB5";
+        function = "pwm1";
+    };
+
+    /omit-if-no-ref/
+    lcd_rgb666_pins_a: lcd-rgb666-pe {
+        pins = "PE0", "PE1", "PE2", "PE3", "PE4", "PE5",
+               "PE6", "PE7", "PE8", "PE9", "PE10", "PE11",
+               "PE12", "PE13", "PE14", "PE15", "PE16", "PE17",
+               "PE18", "PE19", "PE23", "PE24";
+        function = "lcd";
+    };
+
+    /omit-if-no-ref/
+    lcd_rgb666_pins_b: lcd-rgb666-pd {
+        pins = "PD0", "PD1", "PD2", "PD3", "PD4", "PD5",
+               "PD6", "PD7", "PD8", "PD9", "PD10", "PD11",
+               "PD12", "PD13", "PD14", "PD15", "PD16", "PD17",
+               "PD18", "PD19", "PD21";
+        function = "lcd";
+    };    
 };
 
 &usb_otg {
